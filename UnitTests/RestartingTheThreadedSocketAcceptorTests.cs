@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
-using System.IO;
-using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -13,7 +13,7 @@ using QuickFix;
 namespace UnitTests
 {
     [TestFixture]
-    public class ThreadedSocketAcceptorTests
+    public class RestartingTheThreadedSocketAcceptorTests
     {
 
         private const string Host = "127.0.0.1";
@@ -27,43 +27,6 @@ namespace UnitTests
         private Dictionary<string, SocketState> _sessions;
         private HashSet<string> _loggedOnCompIDs;
         private int _senderSequenceNumber = 1;
-        private static string Config = $@"
-[DEFAULT]
-StartTime = 00:00:00
-EndTime = 23:59:59
-ConnectionType = acceptor
-SocketAcceptHost = 127.0.0.1
-SocketAcceptPort = 10000
-FileStorePath = {TestContext.CurrentContext.TestDirectory}\store
-FileLogPath = {TestContext.CurrentContext.TestDirectory}\log
-UseDataDictionary = N
-
-[SESSION]
-SenderCompID = sender
-TargetCompID = target
-BeginString = FIX.4.4
-";
-
-        private static SessionSettings CreateSettings()
-        {
-            return new SessionSettings(new StringReader(Config));
-        }
-        
-
-        [Test]
-        public void TestRecreation()
-        {
-            StartStopAcceptor();
-            StartStopAcceptor();
-            StartStopAcceptor();
-        }
-
-        private static void StartStopAcceptor()
-        {
-            var acceptor = CreateAcceptor();
-            acceptor.Start();
-            acceptor.Dispose();
-        }
 
         public class TestApplication : IApplication
         {
@@ -140,6 +103,7 @@ BeginString = FIX.4.4
             settings.SetString(SessionSettings.SOCKET_CONNECT_PORT, ConnectPort.ToString());
             settings.SetString(SessionSettings.SOCKET_ACCEPT_HOST, Host);
             settings.SetString(SessionSettings.SOCKET_ACCEPT_PORT, AcceptPort.ToString());
+            settings.SetString(SessionSettings.DEBUG_FILE_LOG_PATH, Path.Combine(Path.GetDirectoryName(new Uri(Assembly.GetExecutingAssembly().CodeBase).LocalPath), "log"));
             return settings;
         }
 
@@ -148,7 +112,7 @@ BeginString = FIX.4.4
             return new SessionID(QuickFix.Values.BeginString_FIX42, ServerCompID, targetCompID);
         }
 
-        private ThreadedSocketAcceptor CreateAcceptor()
+        private ThreadedSocketAcceptor CreateAcceptorFromSessionConfig()
         {
             TestApplication application = new TestApplication(LogonCallback, LogoffCallback);
             IMessageStoreFactory storeFactory = new MemoryStoreFactory();
@@ -161,7 +125,12 @@ BeginString = FIX.4.4
             return _acceptor;
         }
 
-        private Socket ConnectToEngine( bool expectFailure = false)
+        private Socket ConnectToEngine()
+        {
+            return ConnectToEngine( false );
+        }
+
+        private Socket ConnectToEngine( bool expectFailure )
         {
             var address = IPAddress.Parse(Host);
             var endpoint = new IPEndPoint(address, AcceptPort);
@@ -182,7 +151,17 @@ BeginString = FIX.4.4
 
         private void ReceiveAsync(SocketState socketState)
         {
-            socketState._socket.BeginReceive(socketState._rxBuffer, 0, socketState._rxBuffer.Length, SocketFlags.None, new AsyncCallback(ProcessRXData), socketState);
+            try
+            {
+                socketState._socket.BeginReceive(socketState._rxBuffer, 0, socketState._rxBuffer.Length, SocketFlags.None, new AsyncCallback(ProcessRXData), socketState);
+            }
+            catch (SocketException e)
+            {
+                if( e.SocketErrorCode != SocketError.Shutdown )
+                {
+                    throw;
+                }
+            }
         }
 
         private void ProcessRXData(IAsyncResult ar)
@@ -296,16 +275,21 @@ BeginString = FIX.4.4
         [TearDown]
         public void TearDown()
         {
-            if (_acceptor != null)
-                _acceptor.Stop(true);
+            if( _acceptor != null )
+            {
+                _acceptor.Stop( true );
+                _acceptor.Dispose();
+            }
             _acceptor = null;
         }
 
+
+        private ThreadedSocketAcceptor m_acceptor;
         [Test]
         public void TestAcceptorInStoppedStateOnInitialisation()
         {
             //GIVEN - an acceptor
-            var acceptor = CreateAcceptor();
+            var acceptor = CreateAcceptorFromSessionConfig();
             //THEN - is should be stopped
             Assert.IsFalse(acceptor.IsStarted);
             Assert.IsFalse(acceptor.AreSocketsRunning);
@@ -317,7 +301,7 @@ BeginString = FIX.4.4
         public void TestAcceptorInStoppedStateOnInitialisationThenCannotReceiveConnections()
         {
             //GIVEN - an acceptor
-            var acceptor = CreateAcceptor();
+            var acceptor = CreateAcceptorFromSessionConfig();
             //WHEN - a connection is received
             var socket01 = ConnectToEngine(true);
             //THEN - Expect failure to connect
@@ -327,7 +311,7 @@ BeginString = FIX.4.4
         public void TestCanStartAcceptor()
         {
             //GIVEN - an acceptor
-            var acceptor = CreateAcceptor();
+            var acceptor = CreateAcceptorFromSessionConfig();
             //WHEN - it is started
             acceptor.Start();
             //THEN - is be running
@@ -340,7 +324,7 @@ BeginString = FIX.4.4
         public void TestStartedAcceptorAndReceiveConnection()
         {
             //GIVEN - a started acceptor
-            var acceptor = CreateAcceptor();
+            var acceptor = CreateAcceptorFromSessionConfig();
             acceptor.Start();
             //WHEN - a connection is received
             var socket01 = ConnectToEngine();
@@ -357,7 +341,7 @@ BeginString = FIX.4.4
         public void TestStartedAcceptorAndReceiveMultipleConnections()
         {
             //GIVEN - a started acceptor
-            var acceptor = CreateAcceptor();
+            var acceptor = CreateAcceptorFromSessionConfig();
             acceptor.Start();
             //WHEN - a connection is received
             var socket01 = ConnectToEngine();
@@ -379,7 +363,7 @@ BeginString = FIX.4.4
         public void TestCanStopAcceptor()
         {
             //GIVEN - started acceptor
-            var acceptor = CreateAcceptor();
+            var acceptor = CreateAcceptorFromSessionConfig();
             acceptor.Start();
             //WHEN - it is stopped
             acceptor.Stop();
@@ -393,7 +377,7 @@ BeginString = FIX.4.4
         public void TestCanForceStopAcceptorAndLogOffCounterpartyIfLoggedOn()
         {
             //GIVEN - started acceptor with a logged on session
-            var acceptor = CreateAcceptor();
+            var acceptor = CreateAcceptorFromSessionConfig();
             acceptor.Start();
             var socket01 = ConnectToEngine();
             SendLogon(socket01, StaticAcceptorCompID);
@@ -408,7 +392,7 @@ BeginString = FIX.4.4
         public void TestCanStopAcceptorAndLogOffCounterpartyIfLoggedOn()
         {
             //GIVEN - started acceptor with a logged on session
-            var acceptor = CreateAcceptor();
+            var acceptor = CreateAcceptorFromSessionConfig();
             acceptor.Start();
             var socket01 = ConnectToEngine();
             SendLogon(socket01, StaticAcceptorCompID);
@@ -427,7 +411,7 @@ BeginString = FIX.4.4
         public void TestCanRestartAcceptorAfterStopping()
         {
             //GIVEN - a started then stopped acceptor 
-            var acceptor = CreateAcceptor();
+            var acceptor = CreateAcceptorFromSessionConfig();
             acceptor.Start();
             acceptor.Stop();
             //WHEN - it is started again
@@ -442,7 +426,7 @@ BeginString = FIX.4.4
         public void TestCanRestartAcceptorAfterStoppingAndCounterPartyCanThenLogon()
         {
             //GIVEN - a started then stopped acceptor 
-            var acceptor = CreateAcceptor();
+            var acceptor = CreateAcceptorFromSessionConfig();
             acceptor.Start();
             acceptor.Stop();
             //WHEN - it is started again
@@ -461,7 +445,7 @@ BeginString = FIX.4.4
         public void TestCanRestartAcceptorAndCounterPartyCanLogonAfterCounterParttyLoggedOnThenAcceptorStopped()
         {
             //GIVEN - a started then stopped acceptor 
-            var acceptor = CreateAcceptor();
+            var acceptor = CreateAcceptorFromSessionConfig();
             acceptor.Start();
             var socket01 = ConnectToEngine();
             SendLogon(socket01, StaticAcceptorCompID);
@@ -484,7 +468,7 @@ BeginString = FIX.4.4
         public void TestCanRestartAcceptorAndCounterPartyCanLogonAfterCounterParttyLoggedOnThenAcceptorForceStopped()
         {
             //GIVEN - a started then stopped acceptor 
-            var acceptor = CreateAcceptor();
+            var acceptor = CreateAcceptorFromSessionConfig();
             acceptor.Start();
             var socket01 = ConnectToEngine();
             SendLogon(socket01, StaticAcceptorCompID);
