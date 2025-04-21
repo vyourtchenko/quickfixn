@@ -71,6 +71,8 @@ namespace QuickFix
             tcpListener_ = new TcpListener(serverSocketEndPoint_);
             sessionDict_ = sessionDict;
             acceptorDescriptor_ = acceptorDescriptor;
+            
+            // tcpListener_.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
         }
 
         public void Start()
