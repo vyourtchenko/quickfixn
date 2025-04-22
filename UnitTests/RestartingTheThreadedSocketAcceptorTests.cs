@@ -430,33 +430,33 @@ namespace UnitTests
             }
         }
         
-        // [Test]
-        // public void TestCanStartAcceptor()
-        // {
-        //     //GIVEN - an acceptor
-        //     //WHEN - it is started
-        //     // _acceptor.Start();
-        //     AcceptorStart();
-        //     //THEN - is be running
-        //     Assert.IsTrue(_acceptor.IsStarted);
-        //     Assert.IsTrue( _acceptor.AreSocketsRunning );
-        //     Assert.IsFalse(_acceptor.IsLoggedOn);
-        //     // if( acceptor != null )
-        //     // {
-        //     //     _acceptor.Stop( true );
-        //     //     Thread.Sleep(1500);
-        //     //     _acceptor.Dispose();
-        //     //     Thread.Sleep(1500);
-        //     // }
-        //     // acceptor = null;
-        // }
+        [Test]
+        public void TestCanStartAcceptor()
+        {
+            //GIVEN - an acceptor
+            //WHEN - it is started
+            _acceptor.Start();
+            // AcceptorStart();
+            //THEN - is be running
+            Assert.IsTrue(_acceptor.IsStarted);
+            Assert.IsTrue( _acceptor.AreSocketsRunning );
+            Assert.IsFalse(_acceptor.IsLoggedOn);
+            // if( acceptor != null )
+            // {
+            //     _acceptor.Stop( true );
+            //     Thread.Sleep(1500);
+            //     _acceptor.Dispose();
+            //     Thread.Sleep(1500);
+            // }
+            // acceptor = null;
+        }
 
         [Test]
         public void TestStartedAcceptorAndReceiveConnection()
         {
             //GIVEN - a started acceptor
-            // _acceptor.Start();
-            AcceptorStart();
+            _acceptor.Start();
+            // AcceptorStart();
             //WHEN - a connection is received
             _socket01 = ConnectToEngine(_app.GetSessions());
             SendLogon( _socket01, StaticAcceptorCompID );
@@ -497,8 +497,8 @@ namespace UnitTests
         public void TestStartedAcceptorAndReceiveMultipleConnections()
         {
             //GIVEN - a started acceptor
-            // _acceptor.Start();
-            AcceptorStart();
+            _acceptor.Start();
+            // AcceptorStart();
             //WHEN - a connection is received
             _socket01 = ConnectToEngine(_app.GetSessions());
             SendLogon(_socket01, StaticAcceptorCompID);
@@ -524,8 +524,8 @@ namespace UnitTests
         public void TestCanStopAcceptor()
         {
             //GIVEN - started acceptor
-            // _acceptor.Start();
-            AcceptorStart();
+            _acceptor.Start();
+            // AcceptorStart();
             //WHEN - it is stopped
             _acceptor.Stop();
             //THEN - it should no longer be running
@@ -538,8 +538,8 @@ namespace UnitTests
         public void TestCanForceStopAcceptorAndLogOffCounterpartyIfLoggedOn()
         {
             //GIVEN - started acceptor with a logged on session
-            // _acceptor.Start();
-            AcceptorStart();
+            _acceptor.Start();
+            // AcceptorStart();
             _socket01 = ConnectToEngine(_app.GetSessions());
             SendLogon(_socket01, StaticAcceptorCompID);
             //WHEN - it is stopped with forced disconnection
@@ -555,8 +555,8 @@ namespace UnitTests
         public void TestCanStopAcceptorAndLogOffCounterpartyIfLoggedOn()
         {
             //GIVEN - started acceptor with a logged on session
-            // _acceptor.Start();
-            AcceptorStart();
+            _acceptor.Start();
+            // AcceptorStart();
             _socket01 = ConnectToEngine(_app.GetSessions());
             SendLogon(_socket01, StaticAcceptorCompID);
             Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, _app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session");
@@ -581,11 +581,11 @@ namespace UnitTests
         
             Console.WriteLine(_acceptor.AreSocketsRunning);
             Console.WriteLine("STARTING");
-            // _acceptor.Start();
-            AcceptorStart();
+            _acceptor.Start();
+            // AcceptorStart();
             Console.WriteLine("STOPPING");
-            // _acceptor.Stop(true);
-            RestartAcceptor();
+            _acceptor.Stop(true);
+            // RestartAcceptor();
         
             // bool isAvailable = false;
             // IPGlobalProperties ipGlobalProperties = IPGlobalProperties.GetIPGlobalProperties();
@@ -630,8 +630,8 @@ namespace UnitTests
             //         throw new Exception("Max retries reached");
             //     }
             // }
-            // _acceptor.Start();
-            AcceptorStart();
+            _acceptor.Start();
+            // AcceptorStart();
             
             //THEN - it should be marked as running
             Assert.IsTrue(_acceptor.IsStarted);
@@ -643,13 +643,13 @@ namespace UnitTests
         public void TestCanRestartAcceptorAfterStoppingAndCounterPartyCanThenLogon()
         {
             //GIVEN - a started then stopped acceptor 
-            // _acceptor.Start();
-            AcceptorStart();
-            // _acceptor.Stop();
-            RestartAcceptor();
+            _acceptor.Start();
+            // AcceptorStart();
+            _acceptor.Stop();
+            // RestartAcceptor();
             //WHEN - it is started again
-            // _acceptor.Start();
-            AcceptorStart();
+            _acceptor.Start();
+            // AcceptorStart();
             //THEN - a counterparty should be able to logon
             Assert.IsTrue(_acceptor.IsStarted);
             Assert.IsTrue(_acceptor.AreSocketsRunning);
@@ -666,16 +666,16 @@ namespace UnitTests
         public void TestCanRestartAcceptorAndCounterPartyCanLogonAfterCounterParttyLoggedOnThenAcceptorStopped()
         {
             //GIVEN - a started then stopped acceptor
-            // _acceptor.Start();
-            AcceptorStart();
+            _acceptor.Start();
+            // AcceptorStart();
             _socket01 = ConnectToEngine(_app.GetSessions());
             SendLogon(_socket01, StaticAcceptorCompID);
             Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, _app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session");
-            // _acceptor.Stop();
-            RestartAcceptor();
+            _acceptor.Stop();
+            // RestartAcceptor();
             //WHEN - it is started again
-            // _acceptor.Start();
-            AcceptorStart();
+            _acceptor.Start();
+            // AcceptorStart();
             //THEN - a counterparty should be able to logon
             Assert.IsTrue(_acceptor.IsStarted);
             Assert.IsTrue(_acceptor.AreSocketsRunning);
@@ -693,15 +693,15 @@ namespace UnitTests
         public void TestCanRestartAcceptorAndCounterPartyCanLogonAfterCounterParttyLoggedOnThenAcceptorForceStopped()
         {
             //GIVEN - a started then stopped acceptor 
-            // _acceptor.Start();
-            AcceptorStart();
+            _acceptor.Start();
+            // AcceptorStart();
             _socket01 = ConnectToEngine(_app.GetSessions());
             SendLogon(_socket01, StaticAcceptorCompID);
             Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, _app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session");
             
-            // _acceptor.Stop(true);
+            _acceptor.Stop(true);
             // WaitForPortRelease();
-            RestartAcceptor();
+            // RestartAcceptor();
             
             //Experimental
             // Thread.Sleep(2000);
@@ -728,12 +728,12 @@ namespace UnitTests
             // Thread.Sleep(2000);
             
             //WHEN - it is started again
-            // _acceptor.Start();
-            Console.WriteLine("Port 55101 bound? " + IPGlobalProperties.GetIPGlobalProperties()
-              .GetActiveTcpListeners()
-              .Any(p => p.Port == AcceptPort));
+            _acceptor.Start();
+            // Console.WriteLine("Port 55101 bound? " + IPGlobalProperties.GetIPGlobalProperties()
+            //   .GetActiveTcpListeners()
+            //   .Any(p => p.Port == AcceptPort));
 
-            AcceptorStart();
+            // AcceptorStart();
             
             // Console.WriteLine(_acceptor.GetAcceptorAddresses());
             //THEN - a counterparty should be able to logon

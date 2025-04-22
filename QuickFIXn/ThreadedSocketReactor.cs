@@ -51,6 +51,7 @@ namespace QuickFix
         private QuickFix.Dictionary sessionDict_;
         private IPEndPoint serverSocketEndPoint_;
         private readonly AcceptorSocketDescriptor acceptorDescriptor_;
+        private bool startedOnceAlready_ = false;
 
         #endregion
 
@@ -109,22 +110,22 @@ namespace QuickFix
                 // }
                 if (State.SHUTDOWN_COMPLETE == state_)
                 {
+                    // Recreate listener to ensure clean socket
+                    if (startedOnceAlready_)
+                    {
+                        tcpListener_?.Server?.Dispose();
+                        tcpListener_ = new TcpListener(serverSocketEndPoint_);
+                        tcpListener_.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                        tcpListener_.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Linger, new LingerOption(true, 0));
+                        
+                        Thread.Sleep(200); // give OS a moment
+                    }
+                    
                     tcpListener_.Start();
                     state_ = State.RUNNING;
                     tcpListener_.BeginAcceptTcpClient(AcceptTcpClientCallback, tcpListener_);
                     
-                    // FIXME do we keep the following?
-                    // // Recreate listener to ensure clean socket
-                    // tcpListener_?.Server?.Dispose();
-                    // tcpListener_ = new TcpListener(serverSocketEndPoint_);
-                    // tcpListener_.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-                    // tcpListener_.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Linger, new LingerOption(true, 0));
-                    //
-                    // Thread.Sleep(200); // give OS a moment
-                    //
-                    // tcpListener_.Start();
-                    // state_ = State.RUNNING;
-                    // tcpListener_.BeginAcceptTcpClient(AcceptTcpClientCallback, tcpListener_);
+                    startedOnceAlready_ = true;
                 }
             }
         }
