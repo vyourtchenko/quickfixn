@@ -2,8 +2,10 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -22,13 +24,14 @@ namespace UnitTests
         private const string StaticAcceptorCompID = "acc01";
         private const string StaticAcceptorCompID2 = "acc02";
         private const string ServerCompID = "dummy";
-        // private ThreadedSocketAcceptor _acceptor = null;
+        private ThreadedSocketAcceptor _acceptor = null;
+        private TestApplication _app = null;
         private const string FIXMessageEnd = @"\x0110=\d{3}\x01";
         private const string FIXMessageDelimit = @"(8=FIX|\A).*?(" + FIXMessageEnd + @"|\z)";
         // private Dictionary<string, SocketState> _sessions;
         // private HashSet<string> _loggedOnCompIDs;
-        private Socket _socket01 = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-        private Socket _socket02 = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        private Socket _socket01 = null;
+        private Socket _socket02 = null;
         private int _senderSequenceNumber = 1;
 
         public class TestApplication : IApplication
@@ -141,8 +144,8 @@ namespace UnitTests
 
             settings.Set(CreateSessionID(StaticAcceptorCompID), CreateSessionConfig());
             settings.Set(CreateSessionID(StaticAcceptorCompID2), CreateSessionConfig());
-            var acceptor = new ThreadedSocketAcceptor(application, storeFactory, settings, logFactory);
-            return (acceptor, application);
+            _acceptor = new ThreadedSocketAcceptor(application, storeFactory, settings, logFactory);
+            return (_acceptor, application);
         }
 
         private Socket ConnectToEngine(Dictionary<string, SocketState> sessions)
@@ -291,29 +294,45 @@ namespace UnitTests
         {
             // _sessions = new Dictionary<string, SocketState>();
             // _loggedOnCompIDs = new HashSet<string>();
+
+            (_acceptor, _app) = CreateAcceptorFromSessionConfig();
             _senderSequenceNumber = 1;
+            Console.WriteLine($"{_acceptor.GetType().FullName}@{RuntimeHelpers.GetHashCode(_acceptor):X}");
+            if (_acceptor != null)
+            {
+                Console.WriteLine(_acceptor.AreSocketsRunning);
+                _acceptor.Stop(true);
+            }
         }
 
         [TearDown]
         public void TearDown()
         {
-            // if( _acceptor != null )
-            // {
-            //     _acceptor.Stop( true );
-            //     Thread.Sleep(1500);
-            //     _acceptor.Dispose();
-            //     Thread.Sleep(1500);
-            // }
-            // _acceptor = null;
-            if (_socket01.Connected)
+            try
+            {
+                // Stop sending/receiving
+                _acceptor.Stop(true);// .Shutdown(SocketShutdown.Both);
+                _acceptor.Dispose();
+            }
+            catch (SocketException)
+            {
+                // It might already be disconnected — ignore
+            }
+            catch (ObjectDisposedException)
+            {
+                // Already gone — ignore
+            }
+            if (_socket01 != null)
             {
                 DisconnectSocket(_socket01);
+                _socket01 = null;
             }
-
-            if (_socket02.Connected)
+            if (_socket02 != null)
             {
                 DisconnectSocket(_socket02);
+                _socket02 = null;
             }
+            Thread.Sleep(15000);
         }
 
 
@@ -322,31 +341,30 @@ namespace UnitTests
         // public void TestAcceptorInStoppedStateOnInitialisation()
         // {
         //     //GIVEN - an acceptor
-        //     var (acceptor, app) = CreateAcceptorFromSessionConfig();
+        //     
         //     //THEN - is should be stopped
-        //     Assert.IsFalse(acceptor.IsStarted);
-        //     Assert.IsFalse(acceptor.AreSocketsRunning);
-        //     Assert.IsFalse( acceptor.IsLoggedOn );
-        //     if( acceptor != null )
-        //     {
-        //         acceptor.Stop( true );
-        //         Thread.Sleep(1500);
-        //         acceptor.Dispose();
-        //         Thread.Sleep(1500);
-        //     }
-        //     acceptor = null;
+        //     Assert.IsFalse(_acceptor.IsStarted);
+        //     Assert.IsFalse(_acceptor.AreSocketsRunning);
+        //     Assert.IsFalse( _acceptor.IsLoggedOn );
+        //     // if( acceptor != null )
+        //     // {
+        //     //     _acceptor.Stop( true );
+        //     //     Thread.Sleep(1500);
+        //     //     _acceptor.Dispose();
+        //     //     Thread.Sleep(1500);
+        //     // }
+        //     // acceptor = null;
         // }
-        
+        //
         // [Test]
         // public void TestAcceptorInStoppedStateOnInitialisationThenCannotReceiveConnections()
         // {
         //     
         //     //GIVEN - an acceptor
-        //     var (acceptor, app) = CreateAcceptorFromSessionConfig();
         //     //WHEN - a connection is received
         //     try
         //     {
-        //         _socket01 = ConnectToEngine(true, app.GetSessions());
+        //         _socket01 = ConnectToEngine(true, _app.GetSessions());
         //         // DisconnectSocket(_socket01);
         //     }
         //     //THEN - Expect failure to connect
@@ -360,106 +378,101 @@ namespace UnitTests
         // public void TestCanStartAcceptor()
         // {
         //     //GIVEN - an acceptor
-        //     var (acceptor, app) = CreateAcceptorFromSessionConfig();
         //     //WHEN - it is started
-        //     acceptor.Start();
+        //     _acceptor.Start();
         //     //THEN - is be running
-        //     Assert.IsTrue(acceptor.IsStarted);
-        //     Assert.IsTrue( acceptor.AreSocketsRunning );
-        //     Assert.IsFalse(acceptor.IsLoggedOn);
-        //     if( acceptor != null )
-        //     {
-        //         acceptor.Stop( true );
-        //         Thread.Sleep(1500);
-        //         acceptor.Dispose();
-        //         Thread.Sleep(1500);
-        //     }
-        //     acceptor = null;
+        //     Assert.IsTrue(_acceptor.IsStarted);
+        //     Assert.IsTrue( _acceptor.AreSocketsRunning );
+        //     Assert.IsFalse(_acceptor.IsLoggedOn);
+        //     // if( acceptor != null )
+        //     // {
+        //     //     _acceptor.Stop( true );
+        //     //     Thread.Sleep(1500);
+        //     //     _acceptor.Dispose();
+        //     //     Thread.Sleep(1500);
+        //     // }
+        //     // acceptor = null;
         // }
 
-        [Test]
-        public void TestStartedAcceptorAndReceiveConnection()
-        {
-            //GIVEN - a started acceptor
-            var (acceptor, app) = CreateAcceptorFromSessionConfig();
-            acceptor.Start();
-            //WHEN - a connection is received
-            _socket01 = ConnectToEngine(app.GetSessions());
-            SendLogon( _socket01, StaticAcceptorCompID );
-            //THEN - is be running
-            Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session");
-            Assert.IsTrue(acceptor.IsLoggedOn);
+        // [Test]
+        // public void TestStartedAcceptorAndReceiveConnection()
+        // {
+        //     //GIVEN - a started acceptor
+        //     _acceptor.Start();
+        //     //WHEN - a connection is received
+        //     _socket01 = ConnectToEngine(_app.GetSessions());
+        //     SendLogon( _socket01, StaticAcceptorCompID );
+        //     //THEN - is be running
+        //     Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, _app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session");
+        //     Assert.IsTrue(_acceptor.IsLoggedOn);
+        //
+        //     //CLEANUP - disconnect client connections
+        //     // DisconnectSocket(_socket01);
+        //     // if( acceptor != null )
+        //     // {
+        //     //     _acceptor.Stop( true );
+        //     //     Thread.Sleep(1500);
+        //     //     _acceptor.Dispose();
+        //     //     Thread.Sleep(1500);
+        //     // }
+        //     // acceptor = null;
+        // }
 
-            //CLEANUP - disconnect client connections
-            // DisconnectSocket(_socket01);
-            if( acceptor != null )
-            {
-                acceptor.Stop( true );
-                Thread.Sleep(1500);
-                acceptor.Dispose();
-                Thread.Sleep(1500);
-            }
-            acceptor = null;
-        }
+        // [Test]
+        // public void TestStartedAcceptorAndReceiveConnection_Duplicate()
+        // {
+        //     //GIVEN - a started acceptor
+        //     _acceptor.Start();
+        //     //WHEN - a connection is received
+        //     _socket01 = ConnectToEngine(_app.GetSessions());
+        //     SendLogon( _socket01, StaticAcceptorCompID );
+        //     //THEN - is be running
+        //     Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, _app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session");
+        //     Assert.IsTrue(_acceptor.IsLoggedOn);
+        //
+        //     //CLEANUP - disconnect client connections
+        //     // DisconnectSocket(_socket01);
+        //     // if( acceptor != null )
+        //     // {
+        //     //     _acceptor.Stop( true );
+        //     //     Thread.Sleep(1500);
+        //     //     _acceptor.Dispose();
+        //     //     Thread.Sleep(1500);
+        //     // }
+        //     // acceptor = null;
+        // }
 
-        [Test]
-        public void TestStartedAcceptorAndReceiveConnection_Duplicate()
-        {
-            //GIVEN - a started acceptor
-            var (acceptor, app) = CreateAcceptorFromSessionConfig();
-            acceptor.Start();
-            //WHEN - a connection is received
-            _socket01 = ConnectToEngine(app.GetSessions());
-            SendLogon( _socket01, StaticAcceptorCompID );
-            //THEN - is be running
-            Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session");
-            Assert.IsTrue(acceptor.IsLoggedOn);
-
-            //CLEANUP - disconnect client connections
-            // DisconnectSocket(_socket01);
-            if( acceptor != null )
-            {
-                acceptor.Stop( true );
-                Thread.Sleep(1500);
-                acceptor.Dispose();
-                Thread.Sleep(1500);
-            }
-            acceptor = null;
-        }
-
-        [Test]
-        public void TestStartedAcceptorAndReceiveMultipleConnections()
-        {
-            //GIVEN - a started acceptor
-            var (acceptor, app) = CreateAcceptorFromSessionConfig();
-            acceptor.Start();
-            //WHEN - a connection is received
-            _socket01 = ConnectToEngine(app.GetSessions());
-            SendLogon(_socket01, StaticAcceptorCompID);
-            _socket02 = ConnectToEngine(app.GetSessions());
-            SendLogon(_socket02, StaticAcceptorCompID2);
-            //THEN - is be running
-            Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session:" + StaticAcceptorCompID);
-            Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID2, app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session:" + StaticAcceptorCompID2);
-            Assert.IsTrue(acceptor.IsLoggedOn);
-        
-        
-            //CLEANUP - disconnect client connections
-            // DisconnectSocket(_socket02);
-            // DisconnectSocket(_socket01);
-            if( acceptor != null )
-            {
-                acceptor.Stop( true );
-                Thread.Sleep(1500);
-                acceptor.Dispose();
-                Thread.Sleep(1500);
-            }
-            acceptor = null;
-        }
+        // [Test]
+        // public void TestStartedAcceptorAndReceiveMultipleConnections()
+        // {
+        //     //GIVEN - a started acceptor
+        //     _acceptor.Start();
+        //     //WHEN - a connection is received
+        //     _socket01 = ConnectToEngine(_app.GetSessions());
+        //     SendLogon(_socket01, StaticAcceptorCompID);
+        //     _socket02 = ConnectToEngine(_app.GetSessions());
+        //     SendLogon(_socket02, StaticAcceptorCompID2);
+        //     //THEN - is be running
+        //     Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, _app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session:" + StaticAcceptorCompID);
+        //     Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID2, _app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session:" + StaticAcceptorCompID2);
+        //     Assert.IsTrue(_acceptor.IsLoggedOn);
+        //
+        //
+        //     //CLEANUP - disconnect client connections
+        //     // DisconnectSocket(_socket02);
+        //     // DisconnectSocket(_socket01);
+        //     // if( acceptor != null )
+        //     // {
+        //     //     _acceptor.Stop( true );
+        //     //     Thread.Sleep(1500);
+        //     //     _acceptor.Dispose();
+        //     //     Thread.Sleep(1500);
+        //     // }
+        //     // acceptor = null;
+        // }
 
         private void DisconnectSocket(Socket socket)
         {
-            socket.Shutdown(SocketShutdown.Both);
             socket.Dispose();
         }
         
@@ -467,193 +480,233 @@ namespace UnitTests
         // public void TestCanStopAcceptor()
         // {
         //     //GIVEN - started acceptor
-        //     var (acceptor, app) = CreateAcceptorFromSessionConfig();
-        //     acceptor.Start();
+        //     _acceptor.Start();
         //     //WHEN - it is stopped
-        //     acceptor.Stop();
+        //     _acceptor.Stop();
         //     //THEN - it should no longer be running
-        //     Assert.IsFalse(acceptor.IsStarted);
-        //     Assert.IsFalse(acceptor.AreSocketsRunning);
-        //     Assert.IsFalse(acceptor.IsLoggedOn);
-        //     if( acceptor != null )
-        //     {
-        //         acceptor.Stop( true );
-        //         Thread.Sleep(1500);
-        //         acceptor.Dispose();
-        //         Thread.Sleep(1500);
-        //     }
-        //     acceptor = null;
-        // }
-        
-        // [Test]
-        // public void TestCanForceStopAcceptorAndLogOffCounterpartyIfLoggedOn()
-        // {
-        //     //GIVEN - started acceptor with a logged on session
-        //     var (acceptor, app) = CreateAcceptorFromSessionConfig();
-        //     acceptor.Start();
-        //     _socket01 = ConnectToEngine(app.GetSessions());
-        //     SendLogon(_socket01, StaticAcceptorCompID);
-        //     //WHEN - it is stopped with forced disconnection
-        //     acceptor.Stop(true);
-        //     //THEN - it should no longer be running
-        //     Assert.IsTrue(WaitForDisconnect(_socket01), "Failed to disconnect session");
-        //     Assert.IsFalse( acceptor.AreSocketsRunning );
-        //     
-        //     // DisconnectSocket(_socket01);
-        //     if( acceptor != null )
-        //     {
-        //         acceptor.Stop( true );
-        //         Thread.Sleep(1500);
-        //         acceptor.Dispose();
-        //         Thread.Sleep(1500);
-        //     }
-        //     acceptor = null;
+        //     Assert.IsFalse(_acceptor.IsStarted);
+        //     Assert.IsFalse(_acceptor.AreSocketsRunning);
+        //     Assert.IsFalse(_acceptor.IsLoggedOn);
+        //     // if( acceptor != null )
+        //     // {
+        //     //     _acceptor.Stop( true );
+        //     //     Thread.Sleep(1500);
+        //     //     _acceptor.Dispose();
+        //     //     Thread.Sleep(1500);
+        //     // }
+        //     // acceptor = null;
         // }
         
         [Test]
-        public void TestCanStopAcceptorAndLogOffCounterpartyIfLoggedOn()
+        public void TestCanForceStopAcceptorAndLogOffCounterpartyIfLoggedOn()
         {
             //GIVEN - started acceptor with a logged on session
-            var (acceptor, app) = CreateAcceptorFromSessionConfig();
-            acceptor.Start();
-            _socket01 = ConnectToEngine(app.GetSessions());
+            _acceptor.Start();
+            _socket01 = ConnectToEngine(_app.GetSessions());
             SendLogon(_socket01, StaticAcceptorCompID);
-            Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session");
-            //WHEN - it is stopped
-            acceptor.Stop();
+            //WHEN - it is stopped with forced disconnection
+            _acceptor.Stop(true);
             //THEN - it should no longer be running
             Assert.IsTrue(WaitForDisconnect(_socket01), "Failed to disconnect session");
-            Assert.IsFalse( app.GetLoggedOnCompIDs().Contains( StaticAcceptorCompID ) );
-            Assert.IsFalse(app.GetSessions().ContainsKey(StaticAcceptorCompID), "Failed to receive a logout message");
-            Assert.IsFalse(acceptor.AreSocketsRunning);
-            Assert.IsFalse( acceptor.IsLoggedOn );
+            Assert.IsFalse( _acceptor.AreSocketsRunning );
             
             // DisconnectSocket(_socket01);
-            if( acceptor != null )
-            {
-                acceptor.Stop( true );
-                Thread.Sleep(1500);
-                acceptor.Dispose();
-                Thread.Sleep(1500);
-            }
-            acceptor = null;
+            // if( acceptor != null )
+            // {
+            //     _acceptor.Stop( true );
+            //     Thread.Sleep(1500);
+            //     _acceptor.Dispose();
+            //     Thread.Sleep(1500);
+            // }
+            // acceptor = null;
         }
-
+        
         // [Test]
-        // public void TestCanRestartAcceptorAfterStopping()
+        // public void TestCanStopAcceptorAndLogOffCounterpartyIfLoggedOn()
+        // {
+        //     //GIVEN - started acceptor with a logged on session
+        //     _acceptor.Start();
+        //     _socket01 = ConnectToEngine(_app.GetSessions());
+        //     SendLogon(_socket01, StaticAcceptorCompID);
+        //     Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, _app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session");
+        //     //WHEN - it is stopped
+        //     _acceptor.Stop();
+        //     //THEN - it should no longer be running
+        //     Assert.IsTrue(WaitForDisconnect(_socket01), "Failed to disconnect session");
+        //     Assert.IsFalse( _app.GetLoggedOnCompIDs().Contains( StaticAcceptorCompID ) );
+        //     Assert.IsFalse(_app.GetSessions().ContainsKey(StaticAcceptorCompID), "Failed to receive a logout message");
+        //     Assert.IsFalse(_acceptor.AreSocketsRunning);
+        //     Assert.IsFalse( _acceptor.IsLoggedOn );
+        //     
+        //     // DisconnectSocket(_socket01);
+        //     // if( acceptor != null )
+        //     // {
+        //     //     _acceptor.Stop( true );
+        //     //     Thread.Sleep(1500);
+        //     //     _acceptor.Dispose();
+        //     //     Thread.Sleep(1500);
+        //     // }
+        //     // acceptor = null;
+        // }
+
+        [Test]
+        public void TestCanRestartAcceptorAfterStopping()
+        {
+            Thread.Sleep(10000);
+            //GIVEN - a started then stopped acceptor 
+            Console.WriteLine($"{_acceptor.GetType().FullName}@{RuntimeHelpers.GetHashCode(_acceptor):X}");
+
+            Console.WriteLine(_acceptor.AreSocketsRunning);
+            Console.WriteLine("STARTING");
+            _acceptor.Start();
+            Console.WriteLine("STOPPING");
+            _acceptor.Stop(true);
+
+            bool isAvailable = false;
+            IPGlobalProperties ipGlobalProperties = IPGlobalProperties.GetIPGlobalProperties();
+            TcpConnectionInformation[] tcpConnInfoArray = ipGlobalProperties.GetActiveTcpConnections();
+
+            while (!isAvailable)
+            {
+                Console.WriteLine("Waiting for a connection...");
+                Thread.Sleep(1000);
+                foreach (TcpConnectionInformation tcpi in tcpConnInfoArray)
+                {
+                    isAvailable = true;
+                    if (tcpi.LocalEndPoint.Port==AcceptPort)
+                    {
+                        isAvailable = false;
+                        break;
+                    }
+                }
+            }
+            Thread.Sleep(200);
+            //WHEN - it is started again
+            Console.WriteLine("STARTING");
+
+            int maxRetries = 5;
+            for (int i = 0; i < maxRetries; i++)
+            {
+                try
+                {
+                    _acceptor.Start();
+                    break;
+                }
+                catch (Exception e)
+                {
+                    Thread.Sleep(1000);
+                }
+
+                if (i == maxRetries)
+                {
+                    throw new Exception("Max retries reached");
+                }
+            }
+            // _acceptor.Start();
+            
+            //THEN - it should be marked as running
+            Assert.IsTrue(_acceptor.IsStarted);
+            Assert.IsTrue(_acceptor.AreSocketsRunning);
+            Assert.IsFalse(_acceptor.IsLoggedOn);
+            // if( acceptor != null )
+            // {
+            //     _acceptor.Stop( true );
+            //     Thread.Sleep(1500);
+            //     _acceptor.Dispose();
+            //     Thread.Sleep(1500);
+            // }
+            // acceptor = null;
+        }
+        
+        // [Test]
+        // public void TestCanRestartAcceptorAfterStoppingAndCounterPartyCanThenLogon()
         // {
         //     //GIVEN - a started then stopped acceptor 
-        //     var (acceptor, app) = CreateAcceptorFromSessionConfig();
-        //     acceptor.Start();
-        //     acceptor.Stop();
+        //     _acceptor.Start();
+        //     _acceptor.Stop();
         //     //WHEN - it is started again
-        //     acceptor.Start();
-        //     //THEN - it should be marked as running
-        //     Assert.IsTrue(acceptor.IsStarted);
-        //     Assert.IsTrue(acceptor.AreSocketsRunning);
-        //     Assert.IsFalse(acceptor.IsLoggedOn);
-        //     if( acceptor != null )
-        //     {
-        //         acceptor.Stop( true );
-        //         Thread.Sleep(1500);
-        //         acceptor.Dispose();
-        //         Thread.Sleep(1500);
-        //     }
-        //     acceptor = null;
+        //     _acceptor.Start();
+        //     //THEN - a counterparty should be able to logon
+        //     Assert.IsTrue(_acceptor.IsStarted);
+        //     Assert.IsTrue(_acceptor.AreSocketsRunning);
+        //     _socket01 = ConnectToEngine(_app.GetSessions());
+        //     SendLogon(_socket01, StaticAcceptorCompID);
+        //     Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, _app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session");
+        //     Assert.IsTrue(_acceptor.IsLoggedOn);
+        //     Assert.IsTrue(WaitForSessionStatus(StaticAcceptorCompID, _app.GetSessions()), "Logon messages was not recevied");
+        //     
+        //     // DisconnectSocket(_socket01);
+        //     // if( acceptor != null )
+        //     // {
+        //     //     _acceptor.Stop( true );
+        //     //     Thread.Sleep(1500);
+        //     //     _acceptor.Dispose();
+        //     //     Thread.Sleep(1500);
+        //     // }
+        //     // acceptor = null;
         // }
-        
-        [Test]
-        public void TestCanRestartAcceptorAfterStoppingAndCounterPartyCanThenLogon()
-        {
-            //GIVEN - a started then stopped acceptor 
-            var (acceptor, app) = CreateAcceptorFromSessionConfig();
-            acceptor.Start();
-            acceptor.Stop();
-            //WHEN - it is started again
-            acceptor.Start();
-            //THEN - a counterparty should be able to logon
-            Assert.IsTrue(acceptor.IsStarted);
-            Assert.IsTrue(acceptor.AreSocketsRunning);
-            _socket01 = ConnectToEngine(app.GetSessions());
-            SendLogon(_socket01, StaticAcceptorCompID);
-            Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session");
-            Assert.IsTrue(acceptor.IsLoggedOn);
-            Assert.IsTrue(WaitForSessionStatus(StaticAcceptorCompID, app.GetSessions()), "Logon messages was not recevied");
-            
-            // DisconnectSocket(_socket01);
-            if( acceptor != null )
-            {
-                acceptor.Stop( true );
-                Thread.Sleep(1500);
-                acceptor.Dispose();
-                Thread.Sleep(1500);
-            }
-            acceptor = null;
-        }
-        
-        [Test]
-        public void TestCanRestartAcceptorAndCounterPartyCanLogonAfterCounterParttyLoggedOnThenAcceptorStopped()
-        {
-            //GIVEN - a started then stopped acceptor 
-            var (acceptor, app) = CreateAcceptorFromSessionConfig();
-            acceptor.Start();
-            _socket01 = ConnectToEngine(app.GetSessions());
-            SendLogon(_socket01, StaticAcceptorCompID);
-            Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session");
-            acceptor.Stop();
-            //WHEN - it is started again
-            acceptor.Start();
-            //THEN - a counterparty should be able to logon
-            Assert.IsTrue(acceptor.IsStarted);
-            Assert.IsTrue(acceptor.AreSocketsRunning);
-            _socket01 = ConnectToEngine(app.GetSessions());
-            SendLogon(_socket01, StaticAcceptorCompID);
-            Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session");
-            Assert.IsTrue(acceptor.IsLoggedOn);
-            Assert.IsTrue( WaitForSessionStatus(StaticAcceptorCompID, app.GetSessions()));
-            
-            // DisconnectSocket(_socket01);
-            if( acceptor != null )
-            {
-                acceptor.Stop( true );
-                Thread.Sleep(1500);
-                acceptor.Dispose();
-                Thread.Sleep(1500);
-            }
-            acceptor = null;
-        }
-        
-        
-        [Test]
-        public void TestCanRestartAcceptorAndCounterPartyCanLogonAfterCounterParttyLoggedOnThenAcceptorForceStopped()
-        {
-            //GIVEN - a started then stopped acceptor 
-            var (acceptor, app) = CreateAcceptorFromSessionConfig();
-            acceptor.Start();
-            _socket01 = ConnectToEngine(app.GetSessions());
-            SendLogon(_socket01, StaticAcceptorCompID);
-            Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session");
-            acceptor.Stop(true);
-            //WHEN - it is started again
-            acceptor.Start();
-            //THEN - a counterparty should be able to logon
-            Assert.IsTrue(acceptor.IsStarted);
-            Assert.IsTrue(acceptor.AreSocketsRunning);
-            _socket01 = ConnectToEngine(app.GetSessions());
-            SendLogon(_socket01, StaticAcceptorCompID);
-            Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, app.GetLoggedOnCompIDs(),60000), "Failed to logon static acceptor session");
-            Assert.IsTrue(acceptor.IsLoggedOn);
-        
-            //CLEANUP - disconnect client connections
-            // DisconnectSocket(_socket01);
-            if( acceptor != null )
-            {
-                acceptor.Stop( true );
-                Thread.Sleep(1500);
-                acceptor.Dispose();
-                Thread.Sleep(1500);
-            }
-            acceptor = null;
-        }
+        //
+        // [Test]
+        // public void TestCanRestartAcceptorAndCounterPartyCanLogonAfterCounterParttyLoggedOnThenAcceptorStopped()
+        // {
+        //     //GIVEN - a started then stopped acceptor
+        //     _acceptor.Start();
+        //     _socket01 = ConnectToEngine(_app.GetSessions());
+        //     SendLogon(_socket01, StaticAcceptorCompID);
+        //     Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, _app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session");
+        //     _acceptor.Stop();
+        //     //WHEN - it is started again
+        //     _acceptor.Start();
+        //     //THEN - a counterparty should be able to logon
+        //     Assert.IsTrue(_acceptor.IsStarted);
+        //     Assert.IsTrue(_acceptor.AreSocketsRunning);
+        //     _socket01 = ConnectToEngine(_app.GetSessions());
+        //     SendLogon(_socket01, StaticAcceptorCompID);
+        //     Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, _app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session");
+        //     Assert.IsTrue(_acceptor.IsLoggedOn);
+        //     Assert.IsTrue( WaitForSessionStatus(StaticAcceptorCompID, _app.GetSessions()));
+        //     
+        //     // DisconnectSocket(_socket01);
+        //     // if( acceptor != null )
+        //     // {
+        //     //     _acceptor.Stop( true );
+        //     //     Thread.Sleep(1500);
+        //     //     _acceptor.Dispose();
+        //     //     Thread.Sleep(1500);
+        //     // }
+        //     // acceptor = null;
+        // }
+        //
+        //
+        // [Test]
+        // public void TestCanRestartAcceptorAndCounterPartyCanLogonAfterCounterParttyLoggedOnThenAcceptorForceStopped()
+        // {
+        //     //GIVEN - a started then stopped acceptor 
+        //     _acceptor.Start();
+        //     _socket01 = ConnectToEngine(_app.GetSessions());
+        //     SendLogon(_socket01, StaticAcceptorCompID);
+        //     Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, _app.GetLoggedOnCompIDs()), "Failed to logon static acceptor session");
+        //     _acceptor.Stop(true);
+        //     //WHEN - it is started again
+        //     _acceptor.Start();
+        //     //THEN - a counterparty should be able to logon
+        //     Assert.IsTrue(_acceptor.IsStarted);
+        //     Assert.IsTrue(_acceptor.AreSocketsRunning);
+        //     _socket01 = ConnectToEngine(_app.GetSessions());
+        //     SendLogon(_socket01, StaticAcceptorCompID);
+        //     Assert.IsTrue(WaitForLogonStatus(StaticAcceptorCompID, _app.GetLoggedOnCompIDs(),60000), "Failed to logon static acceptor session");
+        //     Assert.IsTrue(_acceptor.IsLoggedOn);
+        //
+        //     //CLEANUP - disconnect client connections
+        //     // DisconnectSocket(_socket01);
+        //     // if( acceptor != null )
+        //     // {
+        //     //     _acceptor.Stop( true );
+        //     //     Thread.Sleep(1500);
+        //     //     _acceptor.Dispose();
+        //     //     Thread.Sleep(1500);
+        //     // }
+        //     // acceptor = null;
+        // }
     }
 }

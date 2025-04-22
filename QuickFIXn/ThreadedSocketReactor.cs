@@ -69,17 +69,44 @@ namespace QuickFix
             socketSettings_ = socketSettings;
             serverSocketEndPoint_ = serverSocketEndPoint;
             tcpListener_ = new TcpListener(serverSocketEndPoint_);
+            tcpListener_.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             sessionDict_ = sessionDict;
             acceptorDescriptor_ = acceptorDescriptor;
-            
-            // tcpListener_.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
         }
 
         public void Start()
         {
             lock( sync_ )
             {
-                if( State.SHUTDOWN_COMPLETE == state_ )
+                bool notFinished = true;
+                int count = 1;
+                // while (notFinished)
+                // {
+                //     Thread.Sleep(500);
+                //     Console.WriteLine(count);
+                //     try
+                //     {
+                //         Console.WriteLine("STATE: " + state_);
+                //         if (State.SHUTDOWN_COMPLETE == state_)
+                //         {
+                //             state_ = State.RUNNING;
+                //             tcpListener_.Start();
+                //             tcpListener_.BeginAcceptTcpClient(AcceptTcpClientCallback, tcpListener_);
+                //             notFinished = false;
+                //         }
+                //         else
+                //         {
+                //             Console.WriteLine("STATE: " + state_);
+                //             notFinished = false;
+                //         }
+                //     }
+                //     catch (Exception ex)
+                //     {
+                //         Console.WriteLine(count + ": " + ex.ToString());
+                //         count++;
+                //     }
+                // }
+                if (State.SHUTDOWN_COMPLETE == state_)
                 {
                     state_ = State.RUNNING;
                     tcpListener_.Start();
@@ -121,16 +148,22 @@ namespace QuickFix
             {
 
                 TcpClient client = listener.EndAcceptTcpClient(ar);
+                Console.WriteLine("###1");
                 ApplySocketOptions(client, socketSettings_);
+                Console.WriteLine("###2");
                 ClientHandlerThread t = new ClientHandlerThread(client, nextClientId_++, sessionDict_, socketSettings_, acceptorDescriptor_);
+                Console.WriteLine("###3");
                 t.Exited += OnClientHandlerThreadExited;
+                Console.WriteLine("###4");
                 lock (sync_)
                 {
                     clientThreads_.Add(t.Id, t);
+                    Console.WriteLine("###5");
                 }
                 // FIXME set the client thread's exception handler here
                 t.Log("connected");
                 t.Start();
+                Console.WriteLine("###6");
             }
             catch (Exception e)
             {
@@ -211,6 +244,7 @@ namespace QuickFix
                     state_ = State.SHUTDOWN_COMPLETE;
                 }
             }
+            this.Log("shutdown complete");
         }
 
         /// <summary>

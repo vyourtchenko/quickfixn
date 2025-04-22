@@ -287,8 +287,10 @@ namespace QuickFix
                 if (!isStarted_)
                 {
                     LogonAllSessions();
+                    Console.WriteLine("I am started1");
                     StartAcceptingConnections();
                     isStarted_ = true;
+                    Console.WriteLine("I am started");
                 }
             }
         }
@@ -309,7 +311,9 @@ namespace QuickFix
                 {
                     isStarted_ = false;
                     LogoutAllSessions(force);
+                    Console.WriteLine("I am stopped1");
                     StopAcceptingConnections();
+                    Console.WriteLine("I am stopped");
                 }
             }
             // FIXME StopSessionTimer();
