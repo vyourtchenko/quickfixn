@@ -70,6 +70,7 @@ namespace QuickFix
             serverSocketEndPoint_ = serverSocketEndPoint;
             tcpListener_ = new TcpListener(serverSocketEndPoint_);
             tcpListener_.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+            tcpListener_.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Linger, new LingerOption(true, 0));
             sessionDict_ = sessionDict;
             acceptorDescriptor_ = acceptorDescriptor;
         }
@@ -78,8 +79,8 @@ namespace QuickFix
         {
             lock( sync_ )
             {
-                bool notFinished = true;
-                int count = 1;
+                // bool notFinished = true;
+                // int count = 1;
                 // while (notFinished)
                 // {
                 //     Thread.Sleep(500);
@@ -108,9 +109,22 @@ namespace QuickFix
                 // }
                 if (State.SHUTDOWN_COMPLETE == state_)
                 {
-                    state_ = State.RUNNING;
                     tcpListener_.Start();
+                    state_ = State.RUNNING;
                     tcpListener_.BeginAcceptTcpClient(AcceptTcpClientCallback, tcpListener_);
+                    
+                    // FIXME do we keep the following?
+                    // // Recreate listener to ensure clean socket
+                    // tcpListener_?.Server?.Dispose();
+                    // tcpListener_ = new TcpListener(serverSocketEndPoint_);
+                    // tcpListener_.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                    // tcpListener_.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Linger, new LingerOption(true, 0));
+                    //
+                    // Thread.Sleep(200); // give OS a moment
+                    //
+                    // tcpListener_.Start();
+                    // state_ = State.RUNNING;
+                    // tcpListener_.BeginAcceptTcpClient(AcceptTcpClientCallback, tcpListener_);
                 }
             }
         }
@@ -126,6 +140,7 @@ namespace QuickFix
                         state_ = State.SHUTDOWN_REQUESTED;
                         tcpListener_.Server.Close();
                         tcpListener_.Stop();
+                        Thread.Sleep(200);
                         ShutdownClientHandlerThreads();
                     }
                     catch (System.Exception e)
