@@ -51,6 +51,7 @@ namespace QuickFix
         private QuickFix.Dictionary sessionDict_;
         private IPEndPoint serverSocketEndPoint_;
         private readonly AcceptorSocketDescriptor acceptorDescriptor_;
+        private bool startedOnceAlready_ = false;
 
         #endregion
 
@@ -69,6 +70,8 @@ namespace QuickFix
             socketSettings_ = socketSettings;
             serverSocketEndPoint_ = serverSocketEndPoint;
             tcpListener_ = new TcpListener(serverSocketEndPoint_);
+            tcpListener_.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+            tcpListener_.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Linger, new LingerOption(true, 0));
             sessionDict_ = sessionDict;
             acceptorDescriptor_ = acceptorDescriptor;
         }
@@ -79,9 +82,22 @@ namespace QuickFix
             {
                 if( State.SHUTDOWN_COMPLETE == state_ )
                 {
-                    state_ = State.RUNNING;
+                    // Recreate listener to ensure clean socket
+                    if (startedOnceAlready_)
+                    {
+                        tcpListener_?.Server?.Dispose();
+                        tcpListener_ = new TcpListener(serverSocketEndPoint_);
+                        tcpListener_.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                        tcpListener_.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Linger, new LingerOption(true, 0));
+                        
+                        Thread.Sleep(200); // give OS a moment
+                    }
+                    
                     tcpListener_.Start();
+                    state_ = State.RUNNING;
                     tcpListener_.BeginAcceptTcpClient(AcceptTcpClientCallback, tcpListener_);
+                    
+                    startedOnceAlready_ = true;
                 }
             }
         }
