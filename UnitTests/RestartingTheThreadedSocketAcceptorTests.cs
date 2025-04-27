@@ -225,7 +225,7 @@ namespace UnitTests
             msg.Header.SetField(new QuickFix.Fields.MsgSeqNum(_senderSequenceNumber++));
             msg.Header.SetField(new QuickFix.Fields.SendingTime(System.DateTime.UtcNow));
             msg.SetField(new QuickFix.Fields.HeartBtInt(300));
-            s.Send(Encoding.ASCII.GetBytes(msg.ToString()));
+            s.Send(Encoding.ASCII.GetBytes(msg.ConstructString()));
         }
 
         private void SendLogout(Socket s, string senderCompID)
@@ -235,7 +235,7 @@ namespace UnitTests
             msg.Header.SetField(new QuickFix.Fields.SenderCompID(senderCompID));
             msg.Header.SetField(new QuickFix.Fields.MsgSeqNum(_senderSequenceNumber++));
             msg.Header.SetField(new QuickFix.Fields.SendingTime(System.DateTime.UtcNow));
-            s.Send(Encoding.ASCII.GetBytes(msg.ToString()));
+            s.Send(Encoding.ASCII.GetBytes(msg.ConstructString()));
         }
 
         private bool WaitForSessionStatus(string acceptorCompId)

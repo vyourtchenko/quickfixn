@@ -439,5 +439,6 @@ namespace QuickFix
             Dispose( true );
             GC.SuppressFinalize( this );
         }
+        ~ThreadedSocketAcceptor() => Dispose(false);
     }
 }
