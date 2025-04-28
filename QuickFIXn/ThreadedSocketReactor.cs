@@ -70,6 +70,7 @@ namespace QuickFix
             {
                 if( State.SHUTDOWN_COMPLETE == _state )
                 {
+
                     try
                     {
                         // Recreate listener to ensure clean socket
@@ -79,37 +80,22 @@ namespace QuickFix
                             _tcpListener = new TcpListener(_serverSocketEndPoint);
                             _tcpListener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
                             _tcpListener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Linger, new LingerOption(true, 0));
-                        
+                            
                             Thread.Sleep(200); // give OS a moment
                         }
-                    
+                        
                         _tcpListener.Start();
                         _state = State.RUNNING;
                         _tcpListener.BeginAcceptTcpClient(AcceptTcpClientCallback, _tcpListener);
-                    
+
                         startedOnceAlready_ = true;
                     }
-                    catch(Exception e)
+                    catch (Exception e)
                     {
                         LogError("Error starting listener", e);
                         throw;
                     }
                 }
-            }
-        }
-
-        private const int TenSecondsInTicks = 10000;
-
-        private void WaitForShutdown()
-        {
-            int start = Environment.TickCount;
-            while( State.SHUTDOWN_REQUESTED == _state && (Environment.TickCount - start) < TenSecondsInTicks)
-            {
-                new ManualResetEvent(false).WaitOne(100);
-            }
-            if( State.SHUTDOWN_REQUESTED == _state )
-            {
-                throw new ConnectionShutdownRequestedException();
             }
         }
 
@@ -126,9 +112,9 @@ namespace QuickFix
                         _tcpListener.Stop();
                         ShutdownClientHandlerThreads();
                     }
-                    catch (System.Exception e)
+                    catch (Exception e)
                     {
-                        LogError("Error while closing server socket: " + e.Message);
+                        LogError("Error while closing server socket", e);
                     }
                 }
             }
@@ -136,22 +122,28 @@ namespace QuickFix
 
         private void AcceptTcpClientCallback( IAsyncResult ar )
         {
+            //if socket is in process of shutting down then a client may still be able to connect until it has shutdown but really we don't want to do anything with the connection so just ignore it
+            if (!IsRunning)
+            {
+                return;
+            }
             TcpListener listener = (TcpListener)ar.AsyncState;
             try
             {
 
-                TcpClient client = listener.EndAcceptTcpClient( ar );
-                ApplySocketOptions( client, _socketSettings );
-                ClientHandlerThread t = new ClientHandlerThread( client, _nextClientId++, _socketSettings, _acceptorSocketDescriptor, _nonSessionLog );
+                TcpClient client = listener.EndAcceptTcpClient(ar);
+                ApplySocketOptions(client, _socketSettings);
+                ClientHandlerThread t = new ClientHandlerThread(client, _nextClientId++, _socketSettings, _acceptorSocketDescriptor, _nonSessionLog);
                 t.Exited += OnClientHandlerThreadExited;
-                lock( _sync )
+                lock (_sync)
                 {
-                    _clientThreads.Add( t.Id, t );
+                    _clientThreads.Add(t.Id, t);
                 }
                 // FIXME set the client thread's exception handler here
+                LogError("connected");
                 t.Start();
             }
-            catch( Exception e )
+            catch (Exception e)
             {
                 if (IsRunning)
                     LogError("Error accepting connection: " + e.Message);
@@ -161,6 +153,7 @@ namespace QuickFix
                 listener.BeginAcceptTcpClient( AcceptTcpClientCallback, listener );
             }
         }
+
 
         internal void OnClientHandlerThreadExited(object sender, ClientHandlerThread.ExitedEventArgs e)
         {
@@ -205,8 +198,6 @@ namespace QuickFix
         {
             lock (_sync)
             {
-                LogError("shutting down...");
-                
                 if (State.SHUTDOWN_COMPLETE != _state)
                 {
                     foreach (ClientHandlerThread t in _clientThreads.Values)
